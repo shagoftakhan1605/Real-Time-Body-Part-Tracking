@@ -48,12 +48,12 @@ def draw_all_landmarks(image, landmarks, connections, color):
 
 # Function to process video frames
 def process_frames():
-    cap = cv2.VideoCapture(1)
+    cap = cv2.VideoCapture(0)  # default webcam
     track_history = {}
     blank_frame = None
 
     with mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.5, min_tracking_confidence=0.5) as hands, \
-         mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1, min_detection_confidence=0.5, min_tracking_confidence=0.5) as face_mesh, \
+         mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1, refine_landmarks=True, min_detection_confidence=0.5, min_tracking_confidence=0.5) as face_mesh, \
          mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
 
         while cap.isOpened():
@@ -65,6 +65,7 @@ def process_frames():
             # Initialize the blank frame with the same size as the webcam frame
             if blank_frame is None:
                 blank_frame = np.zeros_like(frame)
+            h, w, _ = frame.shape
 
             # Convert the BGR image to RGB
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -108,16 +109,10 @@ def process_frames():
                 for face_landmarks in face_results.multi_face_landmarks:
                     if selected_options['Iris']:
                         draw_and_track(skeleton_frame, face_landmarks, 468, (255, 140, 0), track_history)  # Left iris landmark
-                    try:
-                        for idx in range(468, 473):
-                            if idx < len(face_landmarks.landmark) and (idx + 1) < len(face_landmarks.landmark):
-                                start_idx = idx
-                                end_idx = idx + 1
-                                start_point = (int(face_landmarks.landmark[start_idx].x * w), int(face_landmarks.landmark[start_idx].y * h))
-                                end_point = (int(face_landmarks.landmark[end_idx].x * w), int(face_landmarks.landmark[end_idx].y * h))
-                                cv2.line(skeleton_frame, start_point, end_point, (255, 140, 0), 2)
-                    except ValueError:
-                        pass
+                    # Iris landmarks 468-477 exist only when refine_landmarks=True
+                    for idx in range(468, min(478, len(face_landmarks.landmark))):
+                        lm = face_landmarks.landmark[idx]
+                        cv2.circle(skeleton_frame, (int(lm.x * w), int(lm.y * h)), 2, (255, 140, 0), -1)
 
             # Track and draw pose landmarks
             if pose_results.pose_landmarks:
@@ -129,7 +124,8 @@ def process_frames():
             # Display the skeleton frame
             cv2.imshow('Tracking', skeleton_frame)
 
-            if cv2.waitKey(10) & 0xFF == 27:
+            key = cv2.waitKey(10) & 0xFF
+            if key == 27 or key == ord('q'):  # Esc or q to quit
                 break
 
     # Save the final tracking image
